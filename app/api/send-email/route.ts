@@ -1,52 +1,29 @@
 import { Resend } from "resend";
 
+console.log("RESEND KEY:", process.env.RESEND_API_KEY);
+
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 export async function POST(req: Request) {
   try {
-    const { email, productName, status, reason } = await req.json();
+    const { to, subject, html } = await req.json();
 
-    const subject =
-      status === "Approved"
-        ? "Product Approved"
-        : "Product Rejected";
-
-    const text =
-      status === "Approved"
-        ? `Congratulations!
-
-Your product "${productName}" has been approved.
-
-You are now eligible for the payment process.`
-        : `Your product "${productName}" has been rejected.
-
-Reason: ${reason}`;
-
-    const result = await resend.emails.send({
-      from: "onboarding@resend.dev",
-      to: email,
+    const data = await resend.emails.send({
+      from: "SourceIt <onboarding@resend.dev>",
+      to,
       subject,
-      text,
+      html,
     });
 
-    console.log("EMAIL RESULT:", result);
-    console.log("EMAIL SENT TO:", email);
+    console.log("RESEND RESPONSE:", data);
 
-    return Response.json({
-      success: true,
-      result,
-    });
+    return Response.json(data);
   } catch (error) {
-    console.error("EMAIL ERROR:", error);
+    console.error("RESEND ERROR:", error);
 
     return Response.json(
-      {
-        success: false,
-        error,
-      },
-      {
-        status: 500,
-      }
+      { error: String(error) },
+      { status: 500 }
     );
   }
 }

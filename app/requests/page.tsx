@@ -16,7 +16,6 @@ export default function RequestsPage() {
   const [requests, setRequests] = useState<Request[]>([]);
   const [filter, setFilter] = useState("All");
 
-  // 🔄 FETCH DATA
   useEffect(() => {
     const fetchRequests = async () => {
       const {
@@ -28,10 +27,11 @@ export default function RequestsPage() {
       const { data, error } = await supabase
         .from("requests")
         .select("*")
-        .eq("user_id", user.id);
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
 
       if (error) {
-        console.error("Fetch error:", error);
+        console.error(error);
         return;
       }
 
@@ -41,110 +41,105 @@ export default function RequestsPage() {
     fetchRequests();
   }, []);
 
-  // ✉️ STATUS UPDATE + EMAIL TRIGGER
-  const updateStatus = async (id: string, status: string, reason?: string) => {
-    const { error } = await supabase
-      .from("requests")
-      .update({ status })
-      .eq("id", id);
-
-    if (error) {
-      console.error("Update error:", error);
-      return;
-    }
-
-    // 🔄 instant UI update
-    setRequests((prev) =>
-      prev.map((req) => (req.id === id ? { ...req, status } : req)),
-    );
-
-    // 📧 EMAIL CALL (backend API)
-    await fetch("/api/send-email", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        requestId: id,
-        status,
-        reason: reason || "",
-      }),
-    });
-  };
-
-  // 🎯 FILTER
   const filteredRequests = requests.filter((req) => {
     if (filter === "All") return true;
     return req.status === filter;
   });
 
   return (
-    <div className="p-10 bg-[#EEEBDA] min-h-screen">
-      <h1 className="text-3xl font-bold mb-6 text-[#2B2B4A]">My Requests</h1>
+    <div className="min-h-screen bg-[#EEEBDA] p-8">
+      <div className="max-w-5xl mx-auto">
+        <h1 className="text-4xl font-bold text-[#2B2B4A] mb-6">
+          My Requests
+        </h1>
 
-      {/* FILTER BUTTONS */}
-      <div className="flex gap-3 mb-6">
-        {["All", "Pending", "Approved", "Rejected"].map((f) => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className={`px-4 py-2 rounded-lg border font-medium transition ${
-              filter === f
-                ? "bg-[#2B2B4A] text-white"
-                : "bg-white text-[#2B2B4A]"
-            }`}
-          >
-            {f}
-          </button>
-        ))}
-      </div>
-
-      {/* LIST */}
-      {filteredRequests.length === 0 ? (
-        <p className="text-gray-600">No requests found.</p>
-      ) : (
-        <div className="space-y-4">
-          {filteredRequests.map((request) => (
-            <div
-              key={request.id}
-              className="border rounded-lg p-4 bg-white shadow-sm"
+        {/* FILTERS */}
+        <div className="flex flex-wrap gap-3 mb-8">
+          {["All", "Pending", "Approved", "Rejected"].map((item) => (
+            <button
+              key={item}
+              onClick={() => setFilter(item)}
+              className={`px-5 py-2 rounded-xl border transition font-medium ${
+                filter === item
+                  ? "bg-[#2B2B4A] text-white"
+                  : "bg-white text-[#2B2B4A]"
+              }`}
             >
-              <h2 className="font-bold text-xl text-[#2B2B4A]">
-                {request.product_name}
-              </h2>
-
-              <p className="text-gray-700 mt-1">{request.description}</p>
-
-              <p className="mt-2 text-[#2B2B4A]">
-                Budget: <b>Rs. {request.budget}</b>
-              </p>
-
-              {/* STATUS */}
-              <p className="mt-2 text-[#2B2B4A]">
-                Status: <span className="font-semibold">{request.status}</span>
-              </p>
-
-              {/* ACTION BUTTONS */}
-              <div className="flex gap-2 mt-3">
-                <button
-                  onClick={() => updateStatus(request.id, "Approved")}
-                  className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700"
-                >
-                  Approve
-                </button>
-
-                <button
-                  onClick={() => {
-                    const reason = prompt("Enter rejection reason:");
-                    updateStatus(request.id, "Rejected", reason || "");
-                  }}
-                  className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700"
-                >
-                  Reject
-                </button>
-              </div>
-            </div>
+              {item}
+            </button>
           ))}
         </div>
-      )}
+
+        {filteredRequests.length === 0 ? (
+          <div className="bg-white rounded-2xl p-8 shadow">
+            <p className="text-gray-600">
+              No requests found.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-5">
+            {filteredRequests.map((request) => (
+              <div
+                key={request.id}
+                className="bg-white rounded-2xl shadow-lg p-6 border"
+              >
+                <h2 className="text-2xl font-bold text-[#2B2B4A]">
+                  {request.product_name}
+                </h2>
+
+                <p className="mt-3 text-gray-700">
+                  {request.description}
+                </p>
+
+                <p className="mt-4 text-[#2B2B4A]">
+                  Budget:
+                  <span className="font-bold ml-2">
+                    Rs. {request.budget}
+                  </span>
+                </p>
+
+                <div className="mt-3">
+                  Status:
+                  <span
+                    className={`ml-2 font-bold ${
+                      request.status === "Approved"
+                        ? "text-green-600"
+                        : request.status === "Rejected"
+                        ? "text-red-600"
+                        : "text-yellow-600"
+                    }`}
+                  >
+                    {request.status}
+                  </span>
+                </div>
+
+                {/* PAYMENT BUTTON */}
+                {request.status === "Approved" && (
+                  <div className="mt-5">
+                    <button className="bg-green-600 hover:bg-green-700 text-white px-5 py-3 rounded-xl transition">
+                      Proceed To Payment
+                    </button>
+                  </div>
+                )}
+
+                {/* REJECTED MESSAGE */}
+                {request.status === "Rejected" && (
+                  <div className="mt-4 bg-red-50 border border-red-200 text-red-700 p-3 rounded-xl">
+                    This request was rejected.
+                  </div>
+                )}
+
+                {/* PENDING MESSAGE */}
+                {request.status === "Pending" && (
+                  <div className="mt-4 bg-yellow-50 border border-yellow-200 text-yellow-700 p-3 rounded-xl">
+                    Waiting for admin approval.
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

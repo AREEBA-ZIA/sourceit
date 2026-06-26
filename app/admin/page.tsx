@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabase";
 
 interface Request {
@@ -10,44 +11,67 @@ interface Request {
   budget: number;
   status: string;
   email?: string;
+  product_cost?: number;
+  delivery_charges?: number;
 }
 
+const ADMIN_EMAIL = "areebazia715@gmail.com";
+
 export default function AdminPage() {
+  const router = useRouter();
+
+  const [loading, setLoading] = useState(true);
   const [requests, setRequests] = useState<Request[]>([]);
   const [filter, setFilter] = useState("All");
 
+  const [productCosts, setProductCosts] = useState<Record<string, number>>({});
+  const [deliveryCharges, setDeliveryCharges] = useState<
+    Record<string, number>
+  >({});
+
   useEffect(() => {
-    const fetchRequests = async () => {
+    const initialize = async () => {
+      const { data: authData } = await supabase.auth.getUser();
+
+      if (authData.user?.email !== ADMIN_EMAIL) {
+        router.push("/");
+        return;
+      }
+
       const { data, error } = await supabase
         .from("requests")
         .select("*")
         .order("created_at", { ascending: false });
 
-      console.log("REQUESTS DATA:", data);
-
       if (error) {
-        console.error("FETCH ERROR:", error);
+        console.error(error);
         return;
       }
 
       setRequests(data || []);
+      setLoading(false);
     };
 
-    fetchRequests();
-  }, []);
+    initialize();
+  }, [router]);
 
   const updateStatus = async (
     id: string,
     status: string,
-    email: string | undefined,
-    productName: string,
+    email?: string,
+    productName?: string,
     reason?: string,
   ) => {
-    console.log("EMAIL FROM REQUEST:", email);
+    const productCost = productCosts[id] || 0;
+    const deliveryCharge = deliveryCharges[id] || 0;
 
     const { error } = await supabase
       .from("requests")
-      .update({ status })
+      .update({
+        status,
+        product_cost: productCost,
+        delivery_charges: deliveryCharge,
+      })
       .eq("id", id);
 
     if (error) {
@@ -56,52 +80,103 @@ export default function AdminPage() {
     }
 
     setRequests((prev) =>
-      prev.map((request) =>
-        request.id === id ? { ...request, status } : request,
+      prev.map((r) =>
+        r.id === id
+          ? {
+              ...r,
+              status,
+              product_cost: productCost,
+              delivery_charges: deliveryCharge,
+            }
+          : r,
       ),
     );
 
-    if (!email) {
-      alert("No email found for this request.");
-      return;
-    }
-
-    try {
+    if (status === "Approved" && email) {
       await fetch("/api/send-email", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          email,
-          productName,
-          status,
-          reason,
+          to: email,
+          subject: "Request Approved - SourceIt",
+          html: `
+            <h2>Your request has been approved 🎉</h2>
+
+            <p><b>Product:</b> ${productName}</p>
+
+            <p><b>Product Cost:</b> Rs. ${productCost}</p>
+
+            <p><b>Delivery Charges:</b> Rs. ${deliveryCharge}</p>
+
+            <p>
+              Your request has been approved.
+              Please proceed with payment.
+            </p>
+
+            <br/>
+
+            <p>
+              Regards,<br/>
+              SourceIt Team
+            </p>
+          `,
         }),
       });
-    } catch (err) {
-      console.error("EMAIL ERROR:", err);
     }
+
+    if (status === "Rejected" && email) {
+      await fetch("/api/send-email", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          to: email,
+          subject: "Request Rejected - SourceIt",
+          html: `
+            <h2>Your request has been rejected</h2>
+
+            <p><b>Product:</b> ${productName}</p>
+
+            <p><b>Reason:</b> ${reason || "Not specified"}</p>
+
+            <br/>
+
+            <p>
+              Regards,<br/>
+              SourceIt Team
+            </p>
+          `,
+        }),
+      });
+    }
+
+    alert(`Request ${status} successfully`);
   };
 
-  const filteredRequests = requests.filter((req) => {
-    if (filter === "All") return true;
-    return req.status === filter;
-  });
+  const filtered = requests.filter((r) =>
+    filter === "All" ? true : r.status === filter,
+  );
+
+  if (loading) {
+    return <div className="p-10 text-center text-xl">Loading...</div>;
+  }
 
   return (
-    <div className="p-10">
-      <h1 className="text-4xl font-bold mb-6">Admin Dashboard</h1>
+    <div className="min-h-screen bg-gray-100 p-10">
+      <h1 className="text-4xl font-bold mb-8">Admin Dashboard</h1>
 
-      <div className="flex gap-2 mb-6">
+      <div className="flex gap-3 mb-8">
         {["All", "Pending", "Approved", "Rejected"].map((tab) => (
           <button
             key={tab}
             onClick={() => setFilter(tab)}
-            className={`px-3 py-1 rounded border transition ${
+            className={`px-5 py-2 rounded-xl border font-medium transition ${
               filter === tab
-                ? "bg-gray-800 text-white border-gray-600"
-                : "bg-gray-900 text-gray-300 border-gray-700 hover:bg-gray-800"
+                ? "bg-[#2B2B4A] text-white"
+                : "bg-white text-[#2B2B4A] border-gray-300"
             }`}
           >
             {tab}
@@ -109,74 +184,80 @@ export default function AdminPage() {
         ))}
       </div>
 
-      {filteredRequests.map((request) => (
-        <div
-          key={request.id}
-          className="border border-gray-700 bg-gray-900 text-white p-4 rounded-lg mb-4"
-        >
-          <h2 className="font-bold text-lg">{request.product_name}</h2>
+      <div className="space-y-5">
+        {filtered.map((req) => (
+          <div key={req.id} className="bg-white p-6 rounded-2xl shadow">
+            <h2 className="text-2xl font-bold">{req.product_name}</h2>
 
-          <p className="text-gray-300 mt-1">{request.description}</p>
+            <p className="text-gray-700 mt-2">{req.description}</p>
 
-          <p className="mt-2 text-gray-300">
-            Budget: Rs. {request.budget}
-          </p>
+            <p className="mt-2">
+              Budget: <b>Rs. {req.budget}</b>
+            </p>
 
-          <p className="mt-2 text-gray-300">
-            Email: {request.email || "NO EMAIL FOUND"}
-          </p>
+            <p className="mt-2">Email: {req.email || "No Email"}</p>
 
-          <p className="mt-2 font-medium">
-            Status:{" "}
-            <span
-              className={
-                request.status === "Approved"
-                  ? "text-green-500"
-                  : request.status === "Rejected"
-                  ? "text-red-500"
-                  : "text-yellow-500"
-              }
-            >
-              {request.status}
-            </span>
-          </p>
+            <p className="mt-2">
+              Status: <b>{req.status}</b>
+            </p>
 
-          <div className="mt-3 flex gap-2">
-            <button
-              onClick={() =>
-                updateStatus(
-                  request.id,
-                  "Approved",
-                  request.email,
-                  request.product_name,
-                )
-              }
-              className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded"
-            >
-              Approve
-            </button>
+            <div className="grid md:grid-cols-2 gap-3 mt-4">
+              <input
+                type="number"
+                placeholder="Product Cost"
+                className="border p-2 rounded text-black bg-white"
+                onChange={(e) =>
+                  setProductCosts({
+                    ...productCosts,
+                    [req.id]: Number(e.target.value),
+                  })
+                }
+              />
 
-            <button
-              onClick={() => {
-                const reason = prompt("Enter rejection reason:");
+              <input
+                type="number"
+                placeholder="Delivery Charges"
+                className="border p-2 rounded text-black bg-white"
+                onChange={(e) =>
+                  setDeliveryCharges({
+                    ...deliveryCharges,
+                    [req.id]: Number(e.target.value),
+                  })
+                }
+              />
+            </div>
 
-                if (!reason) return;
+            <div className="flex gap-3 mt-4">
+              <button
+                onClick={() =>
+                  updateStatus(req.id, "Approved", req.email, req.product_name)
+                }
+                className="bg-green-600 text-white px-4 py-2 rounded"
+              >
+                Approve
+              </button>
 
-                updateStatus(
-                  request.id,
-                  "Rejected",
-                  request.email,
-                  request.product_name,
-                  reason,
-                );
-              }}
-              className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded"
-            >
-              Reject
-            </button>
+              <button
+                onClick={() => {
+                  const reason = prompt("Rejection reason?");
+                  if (!reason) return;
+
+                  updateStatus(
+                    req.id,
+                    "Rejected",
+                    req.email,
+                    req.product_name,
+                    reason,
+                  );
+                }}
+                className="bg-red-600 text-white px-4 py-2 rounded"
+              >
+                Reject
+              </button>
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }
