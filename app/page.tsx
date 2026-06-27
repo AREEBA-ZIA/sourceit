@@ -1,9 +1,28 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
 
 export default function Home() {
   const router = useRouter();
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setIsLoggedIn(!!data.session);
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setIsLoggedIn(!!session);
+      },
+    );
+
+    return () => {
+      listener.subscription.unsubscribe();
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#EEEBDA] text-[#2B2B4A] flex flex-col">
@@ -16,21 +35,23 @@ export default function Home() {
           from suppliers — all in one place.
         </p>
 
-        <div className="flex gap-4 mt-8">
-          <button
-            onClick={() => router.push("/signup")}
-            className="px-6 py-3 bg-[#2B2B4A] text-white rounded-xl hover:opacity-90"
-          >
-            Get Started
-          </button>
+        {isLoggedIn === false && (
+          <div className="flex gap-4 mt-8">
+            <button
+              onClick={() => router.push("/signup")}
+              className="px-6 py-3 bg-[#2B2B4A] text-white rounded-xl hover:opacity-90"
+            >
+              Get Started
+            </button>
 
-          <button
-            onClick={() => router.push("/login")}
-            className="px-6 py-3 border border-[#2B2B4A] rounded-xl hover:bg-white"
-          >
-            I already have account
-          </button>
-        </div>
+            <button
+              onClick={() => router.push("/login")}
+              className="px-6 py-3 border border-[#2B2B4A] rounded-xl hover:bg-white"
+            >
+              I already have account
+            </button>
+          </div>
+        )}
       </main>
 
       {/* FEATURES SECTION */}

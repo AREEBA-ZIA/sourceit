@@ -13,6 +13,7 @@ interface Request {
   email?: string;
   product_cost?: number;
   delivery_charges?: number;
+  rejection_reason?: string;
 }
 
 const ADMIN_EMAIL = "areebazia715@gmail.com";
@@ -65,17 +66,26 @@ export default function AdminPage() {
     const productCost = productCosts[id] || 0;
     const deliveryCharge = deliveryCharges[id] || 0;
 
-    const { error } = await supabase
+    const { data: updatedRows, error } = await supabase
       .from("requests")
       .update({
         status,
         product_cost: productCost,
         delivery_charges: deliveryCharge,
+        rejection_reason: status === "Rejected" ? reason : null,
       })
-      .eq("id", id);
+      .eq("id", id)
+      .select();
 
     if (error) {
       alert(error.message);
+      return;
+    }
+
+    if (!updatedRows || updatedRows.length === 0) {
+      alert(
+        "Update blocked — no rows changed. This is likely a Row Level Security (RLS) policy issue in Supabase."
+      );
       return;
     }
 
@@ -87,6 +97,7 @@ export default function AdminPage() {
               status,
               product_cost: productCost,
               delivery_charges: deliveryCharge,
+              rejection_reason: status === "Rejected" ? reason : undefined,
             }
           : r,
       ),
@@ -200,6 +211,12 @@ export default function AdminPage() {
             <p className="mt-2">
               Status: <b>{req.status}</b>
             </p>
+
+            {req.status === "Rejected" && req.rejection_reason && (
+              <p className="mt-2 text-red-600">
+                Rejection Reason: <b>{req.rejection_reason}</b>
+              </p>
+            )}
 
             <div className="grid md:grid-cols-2 gap-3 mt-4">
               <input
